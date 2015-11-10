@@ -4,6 +4,8 @@
 #define HALFWAY     20
 #define FINISHED    21
 
+#define TIMEOUT     10
+
 #define MOTOR       5
 #define DIRECTION   6
 
@@ -19,17 +21,17 @@ boolean surge;  // Leapin' Reindeer
 
 void detector() { if (state == IDLE)     train = true;    }
 void halfway()  { if (state == OUTBOUND) state = RESTING; }
-void finished() { if (state == INBOUND)  state = IDLE;    }
+void finished() { if (state == INBOUND)  {train = false; state = IDLE;  } }
 
-void blink(int n)
+void blink(int n,int d)
 {
 int i;
 	for(i=0;i<n;i++)
 	{
 		digitalWrite(LED,1);
-		delay(200);
+		delay(d);
 		digitalWrite(LED,0);
-		delay(200);
+		delay(d);
 	}
 }
 
@@ -55,6 +57,7 @@ void setup()
 void leap()
 {
 	digitalWrite(MOTOR,surge);
+	if (surge) blink(4,50);
 	delay(1000);
 	surge = !surge;
 	train = false;
@@ -87,22 +90,26 @@ void loop()
 			case INBOUND:
 				Serial.print("<");
 				leap();
-				if (count > 20) clearall();  // Return switch failed?
+				if (count > TIMEOUT) clearall();  // Return switch failed?
 				break;
 			case OUTBOUND:
 				Serial.print(">");
 				leap();
-				if (count > 20) reverse();  // Outbound switch failed?
+				if (count > TIMEOUT) {  // Outbound switch failed?
+					digitalWrite(MOTOR,0);
+					delay(3000);
+					reverse();
+				}
 				break;
 			case RESTING:
 				Serial.print("_");
-				blink(5);
+				blink(5,200);
 				reverse();  // State -> INBOUND
 				break;
 			case IDLE:
 				if (train) {
 					Serial.print("*");
-					blink(10);
+					blink(10,200);
 					state = OUTBOUND;
 					digitalWrite(DIRECTION,0);
 					digitalWrite(MOTOR,1);
@@ -110,7 +117,7 @@ void loop()
 					train = false;
 				} else {
 					clearall();
-					blink(1);
+					blink(1,200);
 					Serial.println(".");
 					delay(1000);
 				}
