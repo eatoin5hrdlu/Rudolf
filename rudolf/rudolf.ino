@@ -16,12 +16,13 @@
 
 int state;      // What are we doing?
 int count;      // Did we get lost somehow?
+int lockout;    // Don't re-trigger during cycle (or even a few seconds after)
 boolean train;  // Here comes the Train
 boolean surge;  // Leapin' Reindeer
 
-void detector() { if (state == IDLE)     train = true;    }
-void halfway()  { if (state == OUTBOUND) state = RESTING; }
-void finished() { if (state == INBOUND)  {train = false; state = IDLE;  } }
+void detector() { if (state == IDLE && lockout == 0)     train = true;   }
+void halfway()  { if (state == OUTBOUND)                 state = RESTING;}
+void finished() { if (state == INBOUND && lockout == 0) {lockout=14; train=false; state=IDLE;}}
 
 void blink(int n,int d)
 {
@@ -37,8 +38,10 @@ int i;
 
 void setup() 
 {
-	Serial.begin(9600);
+	lockout = 14;  // Cannot trigger immediately after a reset
+	train = false;
 
+	Serial.begin(9600);
 	pinMode(TRAIN,INPUT_PULLUP);
 	pinMode(HALFWAY,INPUT_PULLUP);
 	pinMode(FINISHED,INPUT_PULLUP);
@@ -56,11 +59,12 @@ void setup()
 
 void leap()
 {
-	digitalWrite(MOTOR,surge);
-	if (surge) blink(4,50);
-	delay(1000);
-	surge = !surge;
 	train = false;
+	lockout = 9;
+	digitalWrite(MOTOR,surge);
+	if (surge) blink(4,30);
+	delay(800);
+	surge = !surge;
 }
 
 void clearall()
@@ -75,8 +79,9 @@ void reverse()
 {
 	count = 0;
 	digitalWrite(MOTOR, 0);
-	delay(2000);
+	delay(4000);
 	digitalWrite(DIRECTION,1);
+	lockout = 4;
 	state = INBOUND;
 }
 
@@ -84,46 +89,53 @@ void loop()
 {
 	while(1)  // Optional
 	{
-		if (count++ > 30) clearall();
+		if (lockout > 0) {
+			lockout--;         // Lockout Countdown
+			if (lockout == 0)  // Now get ready for the train
+			{
+				clearall();
+				train = false;
+			}
+		}
 
 		switch(state) {
 			case INBOUND:
 				Serial.print("<");
 				leap();
-				if (count > TIMEOUT) clearall();  // Return switch failed?
+				if (count++ > TIMEOUT) {
+					clearall();  // Return switch failed?
+					lockout = 14;
+				}
 				break;
 			case OUTBOUND:
 				Serial.print(">");
 				leap();
-				if (count > TIMEOUT) {  // Outbound switch failed?
-					digitalWrite(MOTOR,0);
-					delay(3000);
-					reverse();
-				}
+				if (count++ > TIMEOUT) //Outbound switch fail
+					reverse(); // 4-seconds/zeros count
 				break;
 			case RESTING:
 				Serial.print("_");
-				blink(5,200);
+				blink(5,100);
 				reverse();  // State -> INBOUND
 				break;
 			case IDLE:
 				if (train) {
-					Serial.print("*");
-					blink(10,200);
-					state = OUTBOUND;
 					digitalWrite(DIRECTION,0);
-					digitalWrite(MOTOR,1);
-					delay(1000);
+					state = OUTBOUND;
+					surge = true;
 					train = false;
+					leap();
+					Serial.print("*");
+					blink(6,30);
 				} else {
 					clearall();
-					blink(1,200);
+					blink(2,100);
 					Serial.println(".");
-					delay(1000);
+					delay(500);
 				}
 				break;
 			default :
-				delay(1000);
+				delay(100);
 				break;
 		} // End Switch
 	} // End (Optional) while(1)
