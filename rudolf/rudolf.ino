@@ -21,7 +21,7 @@ boolean train;  // Here comes the Train
 boolean surge;  // Leapin' Reindeer
 
 void detector() { if (state == IDLE && lockout == 0)     train = true;   }
-void halfway()  { if (state == OUTBOUND)                 state = RESTING;}
+void halfway()  { if (state == OUTBOUND && lockout == 0){ state = RESTING;} }
 void finished() { if (state == INBOUND && lockout == 0) {lockout=14; train=false; state=IDLE;}}
 
 void blink(int n,int d)
@@ -38,10 +38,10 @@ int i;
 
 void setup() 
 {
+	Serial.begin(9600);
 	lockout = 14;  // Cannot trigger immediately after a reset
 	train = false;
 
-	Serial.begin(9600);
 	pinMode(TRAIN,INPUT_PULLUP);
 	pinMode(HALFWAY,INPUT_PULLUP);
 	pinMode(FINISHED,INPUT_PULLUP);
@@ -49,21 +49,24 @@ void setup()
 	attachInterrupt(digitalPinToInterrupt(HALFWAY),halfway,FALLING);
 	attachInterrupt(digitalPinToInterrupt(FINISHED),finished,FALLING);
 
-	pinMode(LED,      OUTPUT);
+	pinMode(LED,      OUTPUT); digitalWrite(LED,0);
 	pinMode(MOTOR,    OUTPUT);
 	pinMode(DIRECTION,OUTPUT);
 
 	state = IDLE;
 	surge = true;
+	Serial.print("SETUP");
 }
 
+// Leap can be interrupted by a state change
 void leap()
 {
+	int i = 8;
+	int sstate = state;
 	train = false;
-	lockout = 9;
 	digitalWrite(MOTOR,surge);
 	if (surge) blink(4,30);
-	delay(800);
+	while (sstate == state && i-- > 0) delay(100);
 	surge = !surge;
 }
 
@@ -79,8 +82,8 @@ void reverse()
 {
 	count = 0;
 	digitalWrite(MOTOR, 0);
-	delay(4000);
 	digitalWrite(DIRECTION,1);
+	delay(2000);
 	lockout = 4;
 	state = INBOUND;
 }
@@ -91,7 +94,7 @@ void loop()
 	{
 		if (lockout > 0) {
 			lockout--;         // Lockout Countdown
-			if (lockout == 0)  // Now get ready for the train
+			if (state==IDLE && lockout == 0)  // Now get ready for the train
 			{
 				clearall();
 				train = false;
@@ -103,6 +106,7 @@ void loop()
 				Serial.print("<");
 				leap();
 				if (count++ > TIMEOUT) {
+					Serial.print("Inbound timeout");
 					clearall();  // Return switch failed?
 					lockout = 14;
 				}
@@ -111,7 +115,10 @@ void loop()
 				Serial.print(">");
 				leap();
 				if (count++ > TIMEOUT) //Outbound switch fail
+				{
+					Serial.print("Outbound timeout");
 					reverse(); // 4-seconds/zeros count
+				}
 				break;
 			case RESTING:
 				Serial.print("_");
@@ -122,6 +129,7 @@ void loop()
 				if (train) {
 					digitalWrite(DIRECTION,0);
 					state = OUTBOUND;
+					lockout = 6;
 					surge = true;
 					train = false;
 					leap();
