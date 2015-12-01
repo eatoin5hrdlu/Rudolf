@@ -27,33 +27,15 @@ void detector() { if (state == IDLE && lockout == 0) {count=0; train=true; }}
 void halfway()  { if (state == OUTBOUND){ setstate(RESTING);} }
 void finished() { if (state == INBOUND) {setstate(ALLDONE); lockout=14000; train=false; }}
 
-void mydelay(unsigned long md)
+void mydelay(unsigned int md)
 {
-unsigned long long int inter;
-unsigned long long int mtime;
-unsigned long int didwe;
-unsigned long int inner;
-unsigned long int inner2;
-	didwe = 0;
-	mtime = (md * 400000UL );
-	for(inter=0; inter < mtime ; inter++)
+int mums;
+int didwe = 0;
+	for(mums=0; mums < 100 ; mums++)
 	{
-	      didwe++;
-	      inner = 0UL;              
-	      for(inner=0UL; inner<30000UL; inner++);
-		{
-		      inner2 = 0UL;
-		      for(inner2=0UL; inner2<30000UL; inner2++);
-			{
-				didwe++;
-				didwe--;
-			}
-		}
+		delayMicroseconds(1000);
+		didwe++;
 	}
-	Serial.print("                     X ");
-	Serial.println(didwe);
-
-//	delay(md);
 }
 
 void blink(int n,unsigned long int d)
@@ -105,7 +87,7 @@ void setup()
 		Serial.println(" --> out of sequence reset?");
 	} 
 	setstate(STARTUP);
-	lockout = 14000;  // Cannot trigger immediately after a reset
+	lockout = 14;  // Cannot trigger immediately after a reset
 	train = false;
 
 	pinMode(TRAIN,INPUT_PULLUP);
@@ -147,9 +129,9 @@ void reverse()
 {
 	count = 0;
 	digitalWrite(MOTOR, 0);
-	mydelay(2000UL);
+	mydelay(2000);
 	digitalWrite(DIRECTION,1);
-	lockout = 4000;
+	lockout = 4;
 	setstate(INBOUND);
 }
 
@@ -181,7 +163,7 @@ int tmp;
 				if (count++ > TIMEOUT) {
 					Serial.print("inbound timeout");
 					clearall();  // Return switch failed?
-					lockout = 14000;
+					lockout = 14;
 				}
 				break;
 			case OUTBOUND:
@@ -203,7 +185,7 @@ int tmp;
 					digitalWrite(DIRECTION,0);
 					count = 0;
 					setstate(OUTBOUND);
-					lockout = 6000;
+					lockout = 6;
 					surge = true;
 					train = false;
 					leap();
@@ -214,16 +196,16 @@ int tmp;
 					blink(2,100UL);
 					Serial.print(".");
 				}
-                                mydelay(1000UL);
+                                mydelay(1000);
 				break;
 			case ALLDONE:
 	           		Serial.print("All done...");
-				mydelay(2000UL);
+				mydelay(2000);
 				setstate(IDLE);
 				Serial.println("BACK TO IDLE");
 				break;
 			default :
-				mydelay(100UL);
+				mydelay(100);
 		} // End Switch
 //	} // End (Optional) while(1)
 } // End Loop
