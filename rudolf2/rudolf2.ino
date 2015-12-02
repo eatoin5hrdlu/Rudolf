@@ -1,5 +1,9 @@
-
+//#define DEBUG 1
 //#define digitalPinToInterrupt(p)  (p==2?0:(p==3?1:(p>=18&&p<=21?23-p:-1)))
+
+// Self reset after going off the rails.
+// Pulses on output pin keep reset high,
+// if pulses stop, pin goes low, but only for a second
 
 #define LED         13
 #define TRAIN        2
@@ -58,10 +62,16 @@ void finished() { if (state == INBOUND) { lockout=LONG_LOCKOUT; train=false; set
 
 void setstate(int value)
 {
-static int last_state;
 	state = value;
+}
+
+void showstate()
+{
+static int last_state;
+#ifdef DEBUG
 	if (state != last_state)
-		Serial.println(statename[value]);
+		Serial.println(statename[state]);
+#endif
 	last_state = state;
 }
 
@@ -76,9 +86,13 @@ boolean NotSoFast()
 unsigned long now = millis();
 	if ( ( now - m_lasttime < 200) ||  (now - d_lasttime) < 200 )
 	{
+#ifdef DEBUG
 		Serial.print("Toggling motor too fast...");
+#endif
 		mydelay(1000);
+#ifdef DEBUG
 		Serial.println("ok now.");
+#endif
 	}
 }
 
@@ -89,9 +103,9 @@ void motor(boolean m)
 	{
 		NotSoFast();
 		motorON = m;
-		digitalWrite(MOTOR, motorON);
 		m_lasttime = millis();
 	}
+	digitalWrite(MOTOR, m);
 }
 
 void set_direction(boolean d)
@@ -100,14 +114,16 @@ void set_direction(boolean d)
 	{
 		NotSoFast();
 		direction = d;
-		digitalWrite(DIRECTION, direction);
 		d_lasttime = millis();
 	}
+	digitalWrite(DIRECTION, direction);
 }
 
 void setup() 
 {
+#ifdef DEBUG
 	Serial.begin(9600);
+#endif
 	setstate(STARTUP);
 	lockout = LONG_LOCKOUT;  // Cannot trigger immediately after a reset
 	train = false;
@@ -122,13 +138,17 @@ void setup()
 	pinMode(LED,      OUTPUT);
 	digitalWrite(LED, 0);
 	pinMode(MOTOR,    OUTPUT);
-	digitalWrite(MOTOR, 0);
+	motor(false);
 	pinMode(DIRECTION,OUTPUT);
 	set_direction(false);
+	durationMS = 3000UL;
 
 	occ = 0;
+	count = 0;
 	setstate(IDLE);
+#ifdef DEBUG
 	Serial.println("setup");
+#endif
 	d_lasttime = millis();
 	m_lasttime = millis();
 }
@@ -141,13 +161,13 @@ void clearall()
 	set_direction(false);
 }
 
-void show() { if (occ%10000 == 0) Serial.print(statename[state]); }
-
 boolean phase()
 {
 static boolean last;
 boolean p = !(((millis()-last_timestamp)/surgeMS)%2);
+#ifdef DEBUG
 	if (p != last) Serial.print(p);
+#endif
 	last = p;
 	return(p);
 }
@@ -158,19 +178,25 @@ void loop()
 			lockout--;         // Lockout Countdown
 			if (lockout == 0)  // Now get ready for the train
 			{
+#ifdef DEBUG
 				Serial.println("               READY");
+#endif
 				clearall();
 				train = false;
 			}
 		}
 
 		occ++;
+		showstate();
 		switch(state) {
 			case INBOUND:
 				set_direction(true);
 				motor(phase());
 				if (count++ > TIMEOUT) {
+					set_direction(false);
+#ifdef DEBUG
 					Serial.print("inbound timeout");
+#endif
 					setstate(ALLDONE);
 				}
 				break;
@@ -179,22 +205,29 @@ void loop()
 				motor(phase());
 				if (count++ > TIMEOUT)  //Outbound switch fail
 				{
+					motor(false);
+					set_direction(true);
+#ifdef DEBUG
 					Serial.print("OUTbound timeout");
+#endif
 					setstate(PAUSING);
 				}
 				break;
 			case PAUSING:
 				count = 0;
 				motor(false);
+				set_direction(true);
 				last_timestamp = millis();
 				durationMS = 3000UL;
-				set_direction(true);
 				setstate(PAUSED);
 				break;
 			case PAUSED:
 				count = 0;
 				if (millis() > last_timestamp + durationMS)
+				{
+					set_direction(true);
 					setstate(INBOUND);
+				}
 				break;
 			case IDLE:
 				if (train) {
@@ -220,7 +253,10 @@ void loop()
 					setstate(IDLE);
 				break;
 			default:
+#ifdef DEBUG
 				Serial.println("This shouldn't happen!");
+#endif
+				break;
 		} // End Switch
 		phase();
 //	} // End (Optional) while(1)
