@@ -1,6 +1,7 @@
 
-#define LED         13
+#define digitalPinToInterrupt(p)  ((p)==2?0:((p)==3?1:((p)>=18&&(p)<=21?23-(p):-1)))
 
+#define LED         13
 #define TRAIN        2
 #define HALFWAY     20
 #define FINISHED    21
@@ -22,6 +23,9 @@
 #define LONG_LOCKOUT   350000UL
 #define SHORT_LOCKOUT   80000UL
 
+unsigned long m_lasttime;
+unsigned long d_lasttime;
+
 char *statename[8] = {
 	"STARTUP",
 	"IDLE",
@@ -30,7 +34,8 @@ char *statename[8] = {
 	"PAUSED",
 	"INBOUND",
 	"ALLDONE",
-	"RESTING" };
+	"RESTING",
+};
 
 boolean direction;
 boolean motorON;
@@ -59,57 +64,57 @@ static int last_state;
 		Serial.println(statename[value]);
 	last_state = state;
 }
+void plh(unsigned long n)
+{
+byte a,b,c,d;
+     a = (n>>24)&0xFF;
+     b = (n>>16)&0xFF;
+     c = (n>>8)&0xFF;
+     d = (n>>8)&0xFF;
+     Serial.print(a,HEX);Serial.print(b,HEX);
+     Serial.print(c,HEX);Serial.print(d,HEX);
+}
 
-unsigned long m_lasttime;
+void mydelay(int ms)
+{
+	int msdec = ms/10;
+	while(msdec-- > 0) delayMicroseconds(10000);
+}
+
 void motor(boolean m)
 {
 unsigned long now = millis();
-long diff;
+
 	if (m != motorON)
 	{
-		diff = (long) (now - m_lasttime);
-		if ( diff < 200 )
+		if ( now - m_lasttime < 200 )
 		{
-			Serial.print(now);
-			Serial.print(" - ");
-			Serial.print(m_lasttime);
-			Serial.print(" = ");
-			Serial.println(diff);
-			Serial.println("Toggling motor too fast");
-			int i;
-			for(i=0; i<1000; i++)
-				delayMicroseconds(10000);
+		 Serial.println("Toggling motor too fast");
+		 mydelay(1000);
+		 Serial.println("now do it");
 		}
 		motorON = m;
 		digitalWrite(MOTOR,motorON);
+		m_lasttime = millis();
 	}
-	m_lasttime = millis();
 }
 
-unsigned long d_lasttime;
 void set_direction(boolean d)
 {
 unsigned long now = millis();
-long diff;
+unsigned long diff;
 	if (d != direction) 
 	{
-		diff = (long) ( millis() - d_lasttime);
-		if ( diff < 200 )
+		if ( now - d_lasttime < 200 )
 		{
-			Serial.print(now);
-			Serial.print(" - ");
-			Serial.print(d_lasttime);
-			Serial.print(" = ");
-			Serial.println(diff);
 			Serial.println("Changing direction too fast");
-			int i;
-			for(i=0; i<1000; i++)
-				delayMicroseconds(10000);
+			mydelay(1000);
+			Serial.println("now do it");
 		}
 		direction = d;
 		digitalWrite(DIRECTION,direction);
+		d_lasttime = millis();
 	}
-	d_lasttime = millis();
 }
 
 void setup() 
@@ -136,6 +141,8 @@ void setup()
 	occ = 0;
 	setstate(IDLE);
 	Serial.println("setup");
+	d_lasttime = millis();
+	m_lasttime = millis();
 }
 
 void clearall()
