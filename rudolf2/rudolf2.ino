@@ -1,12 +1,12 @@
 
-#define digitalPinToInterrupt(p)  ((p)==2?0:((p)==3?1:((p)>=18&&(p)<=21?23-(p):-1)))
+//#define digitalPinToInterrupt(p)  (p==2?0:(p==3?1:(p>=18&&p<=21?23-p:-1)))
 
 #define LED         13
 #define TRAIN        2
 #define HALFWAY     20
 #define FINISHED    21
 
-#define TIMEOUT     290000UL
+#define TIMEOUT     180000UL
 
 #define MOTOR       5
 #define DIRECTION   6
@@ -64,16 +64,6 @@ static int last_state;
 		Serial.println(statename[value]);
 	last_state = state;
 }
-void plh(unsigned long n)
-{
-byte a,b,c,d;
-     a = (n>>24)&0xFF;
-     b = (n>>16)&0xFF;
-     c = (n>>8)&0xFF;
-     d = (n>>8)&0xFF;
-     Serial.print(a,HEX);Serial.print(b,HEX);
-     Serial.print(c,HEX);Serial.print(d,HEX);
-}
 
 void mydelay(int ms)
 {
@@ -81,38 +71,36 @@ void mydelay(int ms)
 	while(msdec-- > 0) delayMicroseconds(10000);
 }
 
-void motor(boolean m)
+boolean NotSoFast()
 {
 unsigned long now = millis();
+	if ( ( now - m_lasttime < 200) ||  (now - d_lasttime) < 200 )
+	{
+		Serial.print("Toggling motor too fast...");
+		mydelay(1000);
+		Serial.println("ok now.");
+	}
+}
 
+
+void motor(boolean m)
+{
 	if (m != motorON)
 	{
-		if ( now - m_lasttime < 200 )
-		{
-		 Serial.println("Toggling motor too fast");
-		 mydelay(1000);
-		 Serial.println("now do it");
-		}
+		NotSoFast();
 		motorON = m;
-		digitalWrite(MOTOR,motorON);
+		digitalWrite(MOTOR, motorON);
 		m_lasttime = millis();
 	}
 }
 
 void set_direction(boolean d)
 {
-unsigned long now = millis();
-unsigned long diff;
 	if (d != direction) 
 	{
-		if ( now - d_lasttime < 200 )
-		{
-			Serial.println("Changing direction too fast");
-			mydelay(1000);
-			Serial.println("now do it");
-		}
+		NotSoFast();
 		direction = d;
-		digitalWrite(DIRECTION,direction);
+		digitalWrite(DIRECTION, direction);
 		d_lasttime = millis();
 	}
 }
@@ -149,7 +137,7 @@ void clearall()
 {
 	setstate(IDLE);
 	count = 0;
-	digitalWrite(MOTOR,0);
+	motor(false);
 	set_direction(false);
 }
 
@@ -183,8 +171,7 @@ void loop()
 				motor(phase());
 				if (count++ > TIMEOUT) {
 					Serial.print("inbound timeout");
-					clearall();  // Return switch failed?
-					lockout = LONG_LOCKOUT;
+					setstate(ALLDONE);
 				}
 				break;
 			case OUTBOUND:
@@ -193,20 +180,19 @@ void loop()
 				if (count++ > TIMEOUT)  //Outbound switch fail
 				{
 					Serial.print("OUTbound timeout");
-					count = 0;
-					motor(false);
 					setstate(PAUSING);
-					set_direction(true);
 				}
 				break;
 			case PAUSING:
-				digitalWrite(MOTOR, 0);
+				count = 0;
+				motor(false);
 				last_timestamp = millis();
 				durationMS = 3000UL;
 				set_direction(true);
 				setstate(PAUSED);
 				break;
 			case PAUSED:
+				count = 0;
 				if (millis() > last_timestamp + durationMS)
 					setstate(INBOUND);
 				break;
@@ -222,12 +208,14 @@ void loop()
 					clearall();
 				break;
 			case ALLDONE:
+				count = 0;
 				motor(false);
 				last_timestamp = millis();
 				durationMS = 2000UL;
 				setstate(RESTING);
 				break;
 			case RESTING:
+				lockout = LONG_LOCKOUT;
 				if (millis() > last_timestamp + durationMS)
 					setstate(IDLE);
 				break;
