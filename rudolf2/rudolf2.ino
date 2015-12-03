@@ -1,6 +1,6 @@
 //#define DEBUG 1
 //#define digitalPinToInterrupt(p)  (p==2?0:(p==3?1:(p>=18&&p<=21?23-p:-1)))
-
+// Add capacitance to interrupt input lines (Halfway is triggering early)
 // Self reset after going off the rails.
 // Pulses on output pin keep reset high,
 // if pulses stop, pin goes low, but only for a second
@@ -24,8 +24,9 @@
 #define ALLDONE     6
 #define RESTING     7
 
-#define LONG_LOCKOUT   350000UL
-#define SHORT_LOCKOUT   80000UL
+#define LONG_LOCKOUT     300000UL
+#define SHORT_LOCKOUT     80000UL
+#define OUTBOUND_LOCKOUT  20000UL
 
 unsigned long m_lasttime;
 unsigned long d_lasttime;
@@ -56,7 +57,7 @@ unsigned long int count;  // Did we get lost somehow?
 boolean train;            // Here comes the Train
 
 void detector() { if (state == IDLE && lockout == 0) {count=0; train=true; }}
-void halfway()  { if (state == OUTBOUND){ setstate(PAUSING);} }
+void halfway()  { if (state == OUTBOUND && lockout == 0){ setstate(PAUSING);} }
 void finished() { if (state == INBOUND) { lockout=LONG_LOCKOUT; train=false; setstate(ALLDONE);} }
 
 
@@ -174,17 +175,17 @@ boolean p = !(((millis()-last_timestamp)/surgeMS)%2);
 
 void loop()
 {
-		if (state == IDLE && lockout > 0) {
-			lockout--;         // Lockout Countdown
-			if (lockout == 0)  // Now get ready for the train
-			{
+	if (lockout > 0) {
+		lockout--;
+		if (state == IDLE && lockout == 0)  // Now get ready for the train
+		{
 #ifdef DEBUG
-				Serial.println("               READY");
+			Serial.println("               READY");
 #endif
-				clearall();
-				train = false;
-			}
+			clearall();
+			train = false;
 		}
+	}
 
 		occ++;
 		showstate();
@@ -235,7 +236,7 @@ void loop()
 					last_timestamp = millis();
 					setstate(OUTBOUND);
 					count = 0;
-					lockout = SHORT_LOCKOUT;
+					lockout = OUTBOUND_LOCKOUT;
 					train = false;
 				} else
 					clearall();
