@@ -4,6 +4,7 @@
 // Self reset after going off the rails.
 // Pulses on output pin keep reset high,
 // if pulses stop, pin goes low, but only for a second
+// need stronger pullup on halfway pin 
 
 // DEBUGGING: keep track of the number of resets
 
@@ -16,6 +17,10 @@ void debug_incr()
 	int byte = EEPROM.read(0);
 	byte = byte + 1;
 	EEPROM.write(0,byte);
+}
+void debug_zero()
+{
+	EEPROM.write(0,0);
 }
 void debug_initialize()
 {
@@ -32,6 +37,7 @@ void debug_resets()
 	{
 	   int byte = EEPROM.read(0);
 	   debug_initialize();
+	   Serial.println("");
 	   Serial.print(byte);
 	   Serial.println(" resets");
 	}
@@ -41,7 +47,7 @@ void debug_string(char *str)
 	if (!digitalRead(DEBUG_PIN))
 	{
 	   debug_initialize();
-	   Serial.println(str);
+	   Serial.print(str);
 	}
 }
 void debug_int(int i)
@@ -50,6 +56,14 @@ void debug_int(int i)
 	{
 	   debug_initialize();
 	   Serial.print(i);
+	}
+}
+void debug_long(unsigned long l)
+{
+	if (!digitalRead(DEBUG_PIN))
+	{
+	   debug_initialize();
+	   Serial.print(l);
 	}
 }
 		
@@ -72,22 +86,22 @@ void debug_int(int i)
 #define ALLDONE     6
 #define RESTING     7
 
-#define LONG_LOCKOUT     260000UL
+#define LONG_LOCKOUT     180000UL
 #define SHORT_LOCKOUT     80000UL
-#define OUTBOUND_LOCKOUT  60000UL
+#define OUTBOUND_LOCKOUT  55000UL
 
 unsigned long m_lasttime;
 unsigned long d_lasttime;
 
-char *statename[8] = {
-	"STARTUP",
-	"IDLE",
-	"OUTBOUND",
-	"PAUSING",
-	"PAUSED",
-	"INBOUND",
-	"ALLDONE",
-	"RESTING",
+char *statename[] = {
+	"\nSTARTUP",
+	"\nIDLE",
+	"\nOUTBOUND",
+	"\nPAUSING",
+	"\nPAUSED",
+	"\nINBOUND",
+	"\nALLDONE",
+	"\nRESTING",
 };
 
 boolean direction;
@@ -97,16 +111,15 @@ unsigned long int last_timestamp;
 unsigned long int durationMS;
 unsigned long int surgeMS = 1200UL;
 
-unsigned long int lockout;    // Don't re-trigger during cycle (or even a few seconds after)
+unsigned long occ;
+volatile unsigned long int lockout; // Don't re-trigger during cycle (or a few seconds after)
+volatile int state;                // What are we doing?
+volatile unsigned long int count;  // Did we get lost somehow?
+volatile boolean train;            // Here comes the Train
 
-int occ;
-int state;                // What are we doing?
-unsigned long int count;  // Did we get lost somehow?
-boolean train;            // Here comes the Train
-
-void detector() { if (state == IDLE && lockout == 0) {count=0; train=true; }}
-void halfway()  { if (state == OUTBOUND && lockout == 0){ setstate(PAUSING);} }
-void finished() { if (state == INBOUND) { lockout=LONG_LOCKOUT; train=false; setstate(ALLDONE);} }
+void detector() { if (state == IDLE     && lockout == 0) {count=0; train=true; }}
+void halfway()  { if (state == OUTBOUND && lockout == 0) {setstate(PAUSING);   }}
+void finished() { if (state == INBOUND) { lockout=LONG_LOCKOUT; train=false; setstate(ALLDONE);}}
 
 
 void setstate(int value)
@@ -128,14 +141,14 @@ void mydelay(int ms)
 	while(msdec-- > 0) delayMicroseconds(10000);
 }
 
-boolean NotSoFast()
+void NotSoFast()
 {
 unsigned long now = millis();
 	if ( ( now - m_lasttime < 200) ||  (now - d_lasttime) < 200 )
 	{
-		debug_string("Toggling motor too fast...");
+		debug_string("\nToggling motor too fast...");
 		mydelay(1000);
-		debug_string("ok now.");
+		debug_string("ok now.\n");
 	}
 }
 
@@ -162,12 +175,28 @@ void set_direction(boolean d)
 	digitalWrite(DIRECTION, direction);
 }
 
+void showpins()
+{
+int t,h,f;
+	if (occ % 100000 == 0)
+	{
+		t = digitalRead(TRAIN);
+		h = digitalRead(TRAIN);
+		f = digitalRead(TRAIN);
+		debug_string("\nlockout "); debug_long(lockout);
+		debug_string(" train "); debug_int(h);
+		debug_string(" halfw "); debug_int(h);
+		debug_string(" finis "); debug_int(f);
+		debug_string("\n");
+	}
+}
 
 void setup() 
 {
 	pinMode(DEBUG_PIN,INPUT_PULLUP);
 	once = true;
 	debug_initialize(); // Conditionally start serial comm
+	debug_incr();
 	setstate(STARTUP);
 	lockout = LONG_LOCKOUT;  // Cannot trigger immediately after a reset
 	train = false;
@@ -190,7 +219,7 @@ void setup()
 	occ = 0;
 	count = 0;
 	setstate(IDLE);
-	debug_string("setup");
+	debug_resets();
 	d_lasttime = millis();
 	m_lasttime = millis();
 }
@@ -230,13 +259,14 @@ void loop()
 
 		occ++;
 		showstate();
+		showpins();
 		switch(state) {
 			case INBOUND:
 				set_direction(true);
 				motor(phase());
 				if (count++ > TIMEOUT) {
 					set_direction(false);
-					debug_string("inbound timeout");
+					debug_string("\nINbound timeout\n");
 					setstate(ALLDONE);
 				}
 				break;
@@ -247,7 +277,7 @@ void loop()
 				{
 					motor(false);
 					set_direction(true);
-					debug_string("OUTbound timeout");
+					debug_string("\nOUTbound timeout\n");
 					setstate(PAUSING);
 				}
 				break;
@@ -256,7 +286,7 @@ void loop()
 				motor(false);
 				set_direction(true);
 				last_timestamp = millis();
-				durationMS = 3000UL;
+				durationMS = 2000UL;
 				setstate(PAUSED);
 				break;
 			case PAUSED:
@@ -293,6 +323,7 @@ void loop()
 				break;
 			default:
 				debug_string("This shouldn't happen!");
+				setup();//??
 				break;
 		} // End Switch
 		phase();
