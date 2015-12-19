@@ -1,4 +1,4 @@
-//#define DEBUG 1
+/#define DEBUG 1
 //#define digitalPinToInterrupt(p)  (p==2?0:(p==3?1:(p>=18&&p<=21?23-p:-1)))
 // Add capacitance to interrupt input lines (Halfway is triggering early)
 // Self reset after going off the rails.
@@ -72,7 +72,8 @@ void debug_long(unsigned long l)
 #define HALFWAY     20
 #define FINISHED    21
 
-#define TIMEOUT     180000UL
+#define TIMEOUT         180000UL
+#define INBOUND_TIMEOUT  90000UL
 
 #define MOTOR       5
 #define DIRECTION   6
@@ -271,7 +272,7 @@ void loop()
 				set_direction(true);
 				motor(phase());
 				if (count++ > TIMEOUT) {
-					set_direction(false);
+					motor(false);
 					debug_string("\nINbound timeout\n");
 					setstate(ALLDONE);
 				}
@@ -320,9 +321,9 @@ void loop()
 					clearall();
 				break;
 			case ALLDONE:
+				motor(false);
 				detachInterrupt(digitalPinToInterrupt(FINISHED));
 				count = 0;
-				motor(false);
 				last_timestamp = millis();
 				durationMS = 2000UL;
 				setstate(RESTING);
@@ -330,6 +331,7 @@ void loop()
 			case RESTING:
 				lockout = LONG_LOCKOUT;
 				if (millis() > last_timestamp + durationMS) {
+					set_direction(false);
 					attachInterrupt(digitalPinToInterrupt(TRAIN),detector,FALLING);
 					setstate(IDLE);
 				}
